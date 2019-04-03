@@ -1,0 +1,44 @@
+*Ctrl+Shift+Enter* - run code
+*Ctrl+Alt+I* - insert new chunk
+*install.packages("PackageName")* - install library
+
+
+```{r}
+# load the packages
+library(RWeka)
+library(caTools)
+library(dplyr)
+library("Rgraphviz")
+library(partykit)
+library(caret)
+library(ROCR)
+
+library(ggplot2)
+library(tidyr)
+
+```
+
+Load IRIS dataset
+```{r}
+set.seed(17)  # set a seed to get replicable results
+
+iris <- read.csv(file="datasets/iris.csv", head=FALSE, sep=";", fileEncoding="UTF-8-BOM")
+# iris <- iris[sample(1:nrow(iris)), ]  # shuffle
+
+head(iris)
+# plot(iris)  # show dataset
+```
+
+```{r}
+hist(iris$V1)
+
+with(iris, hist(V1))
+
+generateHistogram <- function() {
+  irisPlot <- ggplot(data=iris, aes(x=iris$V1))
+  irisPlot + geom_histogram(binwidth=0.1)
+}
+generateHistogram()
+
+```
+

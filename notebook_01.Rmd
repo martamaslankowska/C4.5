@@ -1,0 +1,74 @@
+Execute chunk - Ctrl+Shift+Enter 
+Add new chunk - Ctrl+Alt+I
+
+```{r}
+# load the packages
+library(RWeka)
+library(caTools)
+library(dplyr)
+
+```
+
+```{r}
+iris <- read.csv(file="datasets/iris.csv", head=FALSE, sep=";", fileEncoding="UTF-8-BOM")
+plot(iris)
+
+```
+
+```{r}
+summary(iris)
+```
+
+```{r}
+# # Show all dataset
+# iris
+
+# # Show first n rows
+# head(iris, 7)
+
+# # Dimension of dataset ~ shape
+# dim(iris)
+
+# # Shows data head in a different way
+# glimpse(iris)
+
+```
+
+
+
+```{r}
+iris$split = sample.split(iris, SplitRatio = 0.8)
+head(iris, 10)
+```
+
+```{r}
+iris_train = subset(iris, iris$spl == TRUE)
+iris_test = subset(iris, iris$spl == FALSE)
+
+dim(iris_test)
+```
+
+```{r}
+fit <- J48(V5 ~ V1+V2+V3+V4, data=iris)
+# summarize the fit
+summary(fit)
+# View(fit)
+# make predictions
+predictions <- predict(fit, iris[,1:4])
+# summarize accuracy
+table(predictions, iris$V5)
+```
+
+Real predictions - with train and test data
+```{r}
+fit <- J48(V5 ~ V1+V2+V3+V4, data=iris_train)
+# summarize the fit
+summary(fit)
+# View(fit)
+# make predictions
+predictions <- predict(fit, iris_test[,1:4])
+# summarize accuracy
+table(predictions, iris_test$V5)
+```
+```
+

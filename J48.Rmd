@@ -1,0 +1,263 @@
+*Ctrl+Shift+Enter* - run code
+*Ctrl+Alt+I* - insert new chunk
+*install.packages("PackageName")* - install library
+
+
+```{r}
+# load the packages
+library(RWeka)
+library(caTools)
+library(dplyr)
+library("Rgraphviz")
+library(partykit)
+library(caret)
+library(ROCR)
+library(rBayesianOptimization)
+library(arulesViz)
+
+```
+
+Load IRIS dataset
+```{r}
+# set.seed(17)  # set a seed to get replicable results
+
+iris <- read.csv(file="datasets/iris.csv", head=FALSE, sep=";", fileEncoding="UTF-8-BOM")
+# iris <- iris[sample(1:nrow(iris)), ]  # shuffle
+
+class_column <- 5
+colnames(iris)[class_column] <- "class"
+head(iris)
+# plot(iris)  # show dataset
+```
+
+Run C4.5 on whole dataset but giving certain parameters
+
+*C4.5-like Trees*
+method = 'J48'
+Type: Classification
+
+Tuning parameters:
+C (Confidence Threshold)
+M (Minimum Instances Per Leaf)
+
+C - The confidence is used to compute a pessimistic upper bound on the error rate at a leaf/node. The smaller this value, the more pessimistic the estimated error is and generally the heavier the pruning. J48 does not accept values greater the 0.5. 
+```{r}
+WOW("J48")
+model <- J48(class ~ ., data = iris, control = Weka_control(C = 0.15, M = 5))
+model
+
+```
+
+```{r}
+str(model)
+```
+
+Visualise model
+```{r}
+ff <- tempfile()
+write_to_dot(model, ff)
+plot(agread(ff))
+
+plot(model)
+```
+
+
+Get train and test data
+```{r}
+folds <- KFold(iris$class, nfolds = 5, stratified = TRUE, seed = 0)
+
+test <- iris[folds[[1]],]   # first fold
+train <- iris[-folds[[1]],] # rest of folds
+
+test
+
+```
+
+Train the model on train data and then test it on test data
+```{r}
+## TRAIN
+model <- J48(class ~ ., data = train, control = Weka_control(C = 0.15, M = 5))
+model
+
+## TEST
+predictions <- predict(model, test[,1:4])  # make predictions
+confusion_matrix <- confusionMatrix(predictions, test$class, mode = "prec_recall")
+confusion_matrix
+
+```
+
+Get statistics for all classes
+```{r}
+stats <- confusion_matrix$byClass
+
+acc <- mean(unname(stats[, 'Balanced Accuracy']))
+prec <- mean(unname(stats[, 'Precision']))
+rec <- mean(unname(stats[, 'Recall']))
+fsc <- mean(unname(stats[, 'F1']))
+
+cat("Statistics for IRIS test data:", acc, prec, rec, fsc)
+```
+
+
+Try to test data on all of the folds and summarize the results
+```{r}
+
+k <- 3
+folds <- KFold(iris$class, nfolds = k, stratified = TRUE, seed = 17)
+
+measures <- matrix(list(), nrow=3, ncol=4)
+
+for (i in seq(length(folds))) {  # 1:k
+  
+  test <- iris[folds[[i]],]  
+  train <- iris[-folds[[i]],] 
+  
+  model <- J48(class ~ ., data = train, control = Weka_control(C = 0.15, M = 5))
+  predictions <- predict(model, test[,1:4])  # make predictions
+  confusion_matrix <- confusionMatrix(predictions, test$class, mode = "prec_recall")
+  
+  stats <- confusion_matrix$byClass
+
+  acc <- mean(unname(stats[, 'Balanced Accuracy']))
+  prec <- mean(unname(stats[, 'Precision']))
+  rec <- mean(unname(stats[, 'Recall']))
+  fsc <- mean(unname(stats[, 'F1']))
+  measures[i,] <- c(acc, prec, rec, fsc)
+  
+  cat("Statistics for fold", i, "-", acc, prec, rec, fsc, "\n")
+}
+
+colnames(measures) <- c("accuracy", "precision", "recall", "fscore")
+cat("\n")
+measures
+
+cat("\n")
+class(measures) <- "numeric"
+measures <- matrix(data=measures, ncol=4, nrow=k)
+colMeans(measures)
+
+```
+
+
+Change code to function with k and stratified as parameters
+```{r}
+
+C45_measures <- function(dataset, class_column, k, stratify, C, M, verbose) {
+  folds <- KFold(dataset$class, nfolds = k, stratified = stratify, seed = 17)
+  
+  measures <- matrix(list(), nrow=k, ncol=4)
+  
+  for (i in seq(length(folds))) {  # 1:k
+    
+    test <- iris[folds[[i]],]  
+    train <- iris[-folds[[i]],] 
+    
+    model <- J48(class ~ ., data = train, control = Weka_control(C = C, M = M))
+    predictions <- predict(model, test[,-class_column])  # make predictions without class column
+    confusion_matrix <- confusionMatrix(predictions, test$class, mode = "prec_recall")
+    
+    stats <- confusion_matrix$byClass
+  
+    acc <- mean(unname(stats[, 'Balanced Accuracy']))
+    prec <- mean(unname(stats[, 'Precision']))
+    rec <- mean(unname(stats[, 'Recall']))
+    fsc <- mean(unname(stats[, 'F1']))
+    measures[i,] <- c(acc, prec, rec, fsc)
+    
+    if (verbose) {
+      cat("Statistics for fold", i, "-", acc, prec, rec, fsc, "\n")
+    }
+  }
+ 
+  class(measures) <- "numeric"
+  measures <- matrix(data=measures, nrow=k, ncol=4)
+  
+  return (colMeans(measures))
+}
+
+```
+
+
+Try to use model function assuming class column is names "class"
+```{r}
+measures_for_all_folds <- C45_measures(iris, class_column, k=7, stratify=FALSE, 0.15, 4, TRUE)
+cat("\nResults:", measures_for_all_folds)
+
+```
+
+
+```{r}
+C45_best_params <- function(dataset, class_column, k, stratify, verbose) {
+  
+  C_params <- c(0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4)
+  one_percent <- as.integer(nrow(dataset) * 0.01)
+  M_params <- c(one_percent, one_percent*2, one_percent*3, one_percent*4, one_percent*5)
+  
+  best_fscore <- 0
+  best_params <- c(0, 0)
+
+  for (c in C_params) {
+    for (m in M_params) {
+      meas <- C45_measures(dataset, class_column, k, stratify, c, m, FALSE)
+      if (verbose) {
+        cat("Checking C4.5 params - C =", c, "and M =", m, "\n")
+        cat("   measures:", meas, "\n")
+      }
+    
+      if (meas[4] > best_fscore) {
+        best_fscore <- meas[4]
+        best_params <- c(c, m)
+      }
+    }
+  }
+  return(best_params)
+}
+```
+
+Only model function
+```{r}
+C45 <- function(dataset, class_column, k, stratify, C, M, verbose) {
+  
+  folds <- KFold(dataset$class, nfolds = k, stratified = stratify, seed = 17)
+
+  for (i in seq(length(folds))) { 
+    test <- iris[folds[[i]],]  
+    train <- iris[-folds[[i]],] 
+    
+    model <- J48(class ~ ., data = train, control = Weka_control(C = C, M = M))
+    if (verbose) {
+      plot(model)
+    }
+  }
+}
+
+```
+
+
+
+Testing C4.5 parameters
+```{r}
+best_C_and_M <- C45_best_params(iris, class_column, k, stratified, TRUE)
+best_C <- best_C_and_M[1]
+best_M <- best_C_and_M[2]
+cat("\nBest params: C =", best_C, "and M =", best_M)
+```
+
+
+Testing whole C4.5 for given cross validation parameters
+```{r}
+k <- 5
+stratified <- FALSE
+
+best_C_and_M <- C45_best_params(iris, class_column, k, stratified, FALSE)
+best_C <- best_C_and_M[1]
+best_M <- best_C_and_M[2]
+cat("\nBest params: C =", best_C, "and M =", best_M, "\n\n")
+
+C45(iris, class_column, k, stratified, best_C, best_M, TRUE)
+best_measures <- C45_measures(iris, class_column, k, stratified, best_C, best_M, TRUE)
+cat("\nBest measures:", best_measures)
+
+```
+
+
