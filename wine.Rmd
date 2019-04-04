@@ -1,0 +1,59 @@
+*Ctrl+Shift+Enter* - run code
+*Ctrl+Alt+I* - insert new chunk
+*install.packages("PackageName")* - install library
+
+
+```{r}
+# load the packages
+library(RWeka)
+library(caTools)
+library(dplyr)
+library("Rgraphviz")
+library(partykit)
+library(caret)
+library(ROCR)
+library(rBayesianOptimization)
+library(arulesViz)
+library(reshape2)
+
+```
+
+Load WINE dataset
+```{r}
+# set.seed(17)  # set a seed to get replicable results
+
+wine <- read.csv(file="datasets/wine.csv", head=FALSE, sep=",", fileEncoding="UTF-8-BOM")
+# iris <- iris[sample(1:nrow(iris)), ]  # shuffle
+
+wine_class_col <- 1
+colnames(wine)[wine_class_col] <- "class"
+# PREPROCESSING
+wine$class <- factor(wine$class,levels = c(1,2,3),labels = c("One","Two","Three"))
+
+head(wine)
+# plot(iris)  # show dataset
+```
+
+Plot one model
+```{r}
+wine_model <- J48(class ~ ., data = wine, control = Weka_control(C = 0.15, M = 4))
+plot(wine_model)
+```
+
+Test data
+```{r}
+wine_results <- C45_check_k_C_M(wine, wine_class_col, FALSE, TRUE)
+wine_results
+
+```
+
+```{r results_to_csv}
+write.csv(wine_results, 'results_wine.csv')
+```
+
+
+
+
+
+
+

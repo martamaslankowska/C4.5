@@ -14,6 +14,8 @@ library(caret)
 library(ROCR)
 library(rBayesianOptimization)
 library(arulesViz)
+library(reshape2)
+
 
 ```
 
@@ -130,6 +132,7 @@ for (i in seq(length(folds))) {  # 1:k
 colnames(measures) <- c("accuracy", "precision", "recall", "fscore")
 cat("\n")
 measures
+measures_to_plot <- measures
 
 cat("\n")
 class(measures) <- "numeric"
@@ -149,8 +152,8 @@ C45_measures <- function(dataset, class_column, k, stratify, C, M, verbose) {
   
   for (i in seq(length(folds))) {  # 1:k
     
-    test <- iris[folds[[i]],]  
-    train <- iris[-folds[[i]],] 
+    test <- dataset[folds[[i]],]  
+    train <- dataset[-folds[[i]],] 
     
     model <- J48(class ~ ., data = train, control = Weka_control(C = C, M = M))
     predictions <- predict(model, test[,-class_column])  # make predictions without class column
@@ -171,7 +174,8 @@ C45_measures <- function(dataset, class_column, k, stratify, C, M, verbose) {
  
   class(measures) <- "numeric"
   measures <- matrix(data=measures, nrow=k, ncol=4)
-  
+  colnames(measures) <- c("accuracy", "precision", "recall", "fscore")
+
   return (colMeans(measures))
 }
 
@@ -180,7 +184,7 @@ C45_measures <- function(dataset, class_column, k, stratify, C, M, verbose) {
 
 Try to use model function assuming class column is names "class"
 ```{r}
-measures_for_all_folds <- C45_measures(iris, class_column, k=7, stratify=FALSE, 0.15, 4, TRUE)
+measures_for_all_folds <- C45_measures(iris, 5, k=7, stratify=FALSE, 0.15, 4, TRUE)
 cat("\nResults:", measures_for_all_folds)
 
 ```
@@ -260,4 +264,53 @@ cat("\nBest measures:", best_measures)
 
 ```
 
+Testing all params for different k values
+```{r}
+
+C45_check_k_C_M <- function(dataset, class_column, stratify, verbose) {
+  k_params <- c(2,3,5,10)
+  best_C_params <- list()
+  best_M_params <- list()
+  
+  results <- data.frame(value = sample(0:0, 4, replace=TRUE))
+  
+  for (k in k_params) {
+    best_C_and_M <- C45_best_params(dataset, class_column, k, stratified, FALSE)
+    best_C <- best_C_and_M[1]
+    best_M <- best_C_and_M[2]
+    best_C_params <- c(best_C_params, best_C)
+    best_M_params <- c(best_M_params, best_M)
+    
+    C45(dataset, class_column, k, stratified, best_C, best_M, FALSE)
+    best_measures <- C45_measures(dataset, class_column, k, stratified, best_C, best_M, FALSE)
+    results[toString(k)] <- as.data.frame(best_measures)
+    
+    if (verbose) {
+      cat("Best measures for k =", k, "-", best_measures, "\n   for best params: C =", best_C, "and M =", best_M, "\n\n")
+    }
+  }
+  
+  best_C_params
+  best_M_params
+  
+  results <- results[, 2:5]
+  rownames(results) <- c("accuracy", "precision", "recall", "fscore")
+  results["C",] <- best_C_params
+  results["M",] <- best_M_params
+  return(results)
+  
+}
+
+```
+
+```{r}
+results <- C45_check_k_C_M(iris, 5, FALSE, TRUE)
+results
+
+```
+
+Write results to file
+```{r}
+write.csv(results, 'results_iris.csv')
+```
 

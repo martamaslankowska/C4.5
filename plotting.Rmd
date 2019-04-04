@@ -1,3 +1,8 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
 *Ctrl+Shift+Enter* - run code
 *Ctrl+Alt+I* - insert new chunk
 *install.packages("PackageName")* - install library
@@ -15,6 +20,8 @@ library(ROCR)
 
 library(ggplot2)
 library(tidyr)
+library(scales)
+
 
 ```
 
@@ -41,4 +48,103 @@ generateHistogram <- function() {
 generateHistogram()
 
 ```
+
+
+```{r beautiful_plot}
+summary(iris)
+qplot(V1, V2, data=iris, color=V5, size=V3)
+```
+
+```{r histogram_colorfull}
+histogram <- ggplot(data=iris, aes(x=V2))
+histogram + geom_histogram(binwidth=0.2, color="black", aes(fill=V5)) + 
+  xlab("Sepal Width") +  ylab("Frequency") + ggtitle("Histogram of Sepal Width")
+
+```
+
+Trying to plot something nice :) No success as far....
+```{r line_plot}
+measures_dataframe <- t(as.data.frame(t(measures_to_plot)))
+for (i in 1:nrow(measures_dataframe)) {
+  for (j in 1:ncol(measures_dataframe)) {
+    # cat(i, j, "-\n  ", measures_dataframe[i, j], "\n  ")
+    # cat(measures_dataframe[[i, j]], "\n")
+    measures_dataframe[i, j] <- as.numeric(measures_dataframe[[i, j]])
+  }
+}
+
+measures_dataframe
+
+ggplot(data=sdt, aes(x=accuracy, y=precision, group=1)) +
+  geom_line()+
+  geom_point()
+
+```
+
+```{r}
+m <- measures_to_plot
+
+class(measures_to_plot) <- "numeric"
+measures_to_plot <- matrix(data=measures_to_plot, ncol=4, nrow=k)
+colnames(measures_to_plot) <- c("accuracy", "precision", "recall", "fscore")
+measures_to_plot
+
+s <- colMeans(measures_to_plot)
+sd <- as.data.frame(s)
+sd
+sd["col"] <- as.data.frame(s)
+sdt <- as.data.frame(t(sd))
+
+sdt
+
+```
+
+
+```{r}
+wine_results
+```
+
+
+```{r}
+wr <- t(wine_results['accuracy', ])
+wr <- as.data.frame(wr)
+wr
+
+percentages <- wr[,1]*100
+k_values <- rownames(wr)
+# yticks_val <- pretty_breaks(n=5)(wr[,1])
+
+plot(k_values, percentages, yaxt="n")
+axis(2, at=pretty(percentages), lab=pretty(percentages), las=TRUE)
+# axis(2, at=yticks_val, lab=percent(yticks_val))
+
+# plot(dates, returns, yaxt="n")
+```
+
+```{r beautiful_plot}
+df <- as.data.frame(t(wine_results)) * 100
+df
+accuracy <- df[,'accuracy']
+precision <- df[, 'precision']
+recall <- df[, 'recall']
+fscore <- df[, 'fscore']
+
+k_values <- as.numeric(colnames(wine_results))
+
+# Draw plot with one line
+plot(k_values, accuracy, type="b", pch=19, col="red", ylim=c(min(fscore), max(accuracy)))
+# Add lines
+lines(k_values, precision, pch=18, col="blue", type="b", lty=2)
+lines(k_values, recall, pch=17, col="green", type="b", lty=3)
+lines(k_values, fscore, pch=15, col="black", type="b", lty=4)
+
+# Add a legend
+legend(8.6, 95.4, legend=c("Accuracy", "Precision", "Recall", "F-score"),
+       col=c("red", "blue", "green", "black"), lty=1:4, cex=0.8)
+```
+
+
+
+
+
 
