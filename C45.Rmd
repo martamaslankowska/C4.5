@@ -1,0 +1,330 @@
+*Ctrl+Shift+Enter* - run code
+*Ctrl+Alt+I* - insert new chunk
+*install.packages("PackageName")* - install library
+
+
+```{r}
+# load the packages
+library(RWeka)
+library(caTools)
+library(dplyr)
+library("Rgraphviz")
+library(partykit)
+library(caret)
+library(ROCR)
+library(rBayesianOptimization)
+library(arulesViz)
+library(reshape2)
+
+
+```
+
+
+*C4.5 Trees - information*
+C4.5 decision tree grows using Depth-first strategy. It allows pruning of the resulting decision trees. It can also
+deal with numeric attributes, missing values, and noisy data. In order to handle continuous attributes, it creates a
+threshold and then splits the list into those whose attribute value is above the threshold and those that are less than or equal to it. C4.5 goes back through the tree once it's been created and attempts to remove branches that do not help by replacing them with leaf nodes.
+
+Default prunning: Error-based pruning 
+It computes a confidence interval for the classification error on the training data and uses the upper limit of that confidence interval as an estimate of generalisation error to make pruning decisions.
+
+method = 'J48'
+Type: Classification
+
+Tuning parameters:
+C (Confidence Threshold)
+M (Minimum Instances Per Leaf)
+U (Unpruned tree)
+R (Reduced error pruning)
+N (Number of folds in reduced error pruning)
+
+C - The confidence is used to compute a pessimistic upper bound on the error rate at a leaf/node. The smaller this value, the more pessimistic the estimated error is and generally the heavier the pruning. J48 does not accept values greater the 0.5. All it means is that the estimated upper bound for the error associated with a given node in the tree is the least pessimistic. 
+
+N - That is this parameter determines amount of data used for reduced error pruning. Among numFolds one fold is used for
+pruning and rest of them for growing the tree. Suppose numFold is 3 then 1 fold is used for pruning and 2 fold for training for growing the tree.
+
+For more information: WOW("J48")
+
+
+
+Load GLASS dataset
+```{r}
+glass <- read.csv(file="datasets/glass.csv", head=FALSE, sep=",", fileEncoding="UTF-8-BOM")
+
+glass <- glass[,-1]
+glass_class_col <- 10
+colnames(glass)[glass_class_col] <- "class"
+
+# PREPROCESSING
+glass$class <- factor(glass$class,levels = c(1, 2, 3, 5, 6, 7),labels = c("One","Two","Three", "Five", "Six", "Seven"))
+
+head(glass)
+# plot(iris)  # show dataset
+```
+
+Plot mode learned on whole dataset
+```{r}
+model <- J48(class ~ ., data = glass, control = Weka_control(C = 0.15, M = 5))
+model
+plot(model)
+
+# Visualize model in a different way
+ff <- tempfile()
+write_to_dot(model, ff)
+plot(agread(ff))
+```
+
+Get train and test data
+```{r}
+folds <- KFold(glass$class, nfolds = 5, stratified = TRUE, seed = 0)
+
+test <- glass[folds[[1]],]    # first fold
+train <- glass[-folds[[1]],]  # rest of folds
+
+## TRAIN
+model <- J48(class ~ ., data = train, control = Weka_control(C = 0.15, M = 5))
+
+## TEST
+predictions <- predict(model, test[,-glass_class_col])  # make predictions
+confusion_matrix <- confusionMatrix(predictions, test$class, mode = "prec_recall")
+confusion_matrix
+```
+
+Get all measures
+```{r}
+stats <- confusion_matrix$byClass
+
+acc <- mean(unname(stats[, 'Balanced Accuracy']))
+prec <- mean(unname(stats[, 'Precision']))
+rec <- mean(unname(stats[, 'Recall']))
+fsc <- mean(unname(stats[, 'F1']))
+
+cat("Statistics for GLASS test data:", acc, prec, rec, fsc)
+```
+
+
+Get mean of all measures for all folds for given k
+```{r}
+C45_measures_for_params <- function(dataset, class_column, k, stratify, C, M, U, N, verbose) {
+  folds <- KFold(dataset$class, nfolds = k, stratified = stratify, seed = 17)
+  
+  measures <- matrix(list(), nrow=k, ncol=4)
+  
+  for (i in seq(length(folds))) {  # 1:k
+    
+    test <- dataset[folds[[i]],]  
+    train <- dataset[-folds[[i]],] 
+    
+    if (C != FALSE) {
+      model <- J48(class ~ ., data = train, control = Weka_control(C = C, M = M))
+    }
+    if (U != FALSE) {
+      model <- J48(class ~ ., data = train, control = Weka_control(U = TRUE))
+    }
+    if (N != FALSE) {
+      model <- J48(class ~ ., data = train, control = Weka_control(R = TRUE, N = N))
+    }
+    
+    predictions <- predict(model, test[,-class_column])  # make predictions without class column
+    confusion_matrix <- confusionMatrix(predictions, test$class, mode = "prec_recall")
+    
+    stats <- as.matrix(confusion_matrix, what = "classes")
+    stats <- as.data.frame(stats)
+    stats[is.na(stats)] <- 0
+
+    acc <- mean(as.numeric(stats['Balanced Accuracy', ]))
+    prec <- mean(as.numeric(stats['Precision', ]))
+    rec <- mean(as.numeric(stats['Recall', ]))
+    fsc <- mean(as.numeric(stats['F1', ]))
+    measures[i,] <- c(acc, prec, rec, fsc)
+    
+    if (verbose) {
+      cat("Statistics for fold", i, "-", acc, prec, rec, fsc, "\n")
+    }
+  }
+ 
+  class(measures) <- "numeric"
+  measures <- matrix(data=measures, nrow=k, ncol=4)
+  colnames(measures) <- c("accuracy", "precision", "recall", "fscore")
+
+  return (colMeans(measures))
+}
+```
+
+
+Get all C and M measures for given k
+```{r}
+
+C45_all_C_M_params <- function(dataset, class_column, k, stratify, verbose) {
+  
+  C_params <- c(0.1, 0.15)#, 0.2, 0.25, 0.3, 0.35, 0.4)
+  M_params <- c(1, 2, 3)#, 5, 8, 10, 15)
+  
+  all_params <- matrix(list(), nrow=(length(C_params)*length(M_params)), ncol=6)
+
+  i <- 0
+  for (c in C_params) {
+    for (m in M_params) {
+      i <- i+1
+      meas <- C45_measures_for_params(dataset, class_column, k, stratify, C=c, M=m, U=FALSE, N=FALSE, FALSE)
+      if (verbose) {
+        cat("Checking C4.5 params - C =", c, "and M =", m, "\n")
+        cat("   measures:", meas, "\n")
+      }
+      
+      all_params[i,] <- c(c, m, meas)
+    }
+  }
+  colnames(all_params) <- c("c", "m", "accuracy", "precision", "recall", "fscore")
+  return(apply(all_params, 2, as.numeric))
+}
+
+```
+
+```{r}
+C_M_params <- C45_all_C_M_params(glass, glass_class_col, 3, TRUE, FALSE)
+C_M_params
+```
+
+Get best row out of all params giving measure 
+```{r}
+C45_best_params <- function(all_params, measure_idx) {
+  
+  b <- ncol(all_params)
+  a <- b - 3
+  all_measures <- all_params[, a:b]
+  measure_column <- as.vector(all_measures[, measure_idx])
+  df <- as.data.frame(all_measures)
+  best_row <- which(measure_column %in% max(df[, measure_idx], na.rm = TRUE))
+  
+  return (all_params[best_row[1], ])
+}
+
+```
+
+```{r}
+best_C_M_measures <- C45_best_params(C_M_params, 2)  # 3 - best recall
+best_C_M_measures
+```
+
+
+
+Get all measures for different N values
+```{r}
+C45_all_N_params <- function(dataset, class_column, k, stratify, verbose) {
+  
+  N_params <- c(2, 3, 5, 8, 10, 15)
+  all_params <- matrix(list(), nrow=length(N_params), ncol=5)
+
+  i <- 0
+  for (n in N_params) {
+      i <- i+1
+      meas <- C45_measures_for_params(dataset, class_column, k, stratify, C=FALSE, M=FALSE, U=FALSE, N=n, FALSE)
+      if (verbose) {
+        cat("Checking C4.5 params - N =", n, "\n")
+        cat("   measures:", meas, "\n")
+      }
+      
+      all_params[i,] <- c(n, meas)
+  }
+  colnames(all_params) <- c("n", "accuracy", "precision", "recall", "fscore")
+  return(apply(all_params, 2, as.numeric))
+}
+```
+
+```{r}
+N_params <- C45_all_N_params(glass, glass_class_col, 3, TRUE, FALSE)
+N_params
+cat("\n")
+best_N_measures <- C45_best_params(N_params, 2)  # 2 - best precision
+best_N_measures
+```
+
+
+
+
+Get measures for non pruned tree
+```{r}
+C45_U_param <- function(dataset, class_column, k, stratify, verbose) {
+  
+  meas <- C45_measures_for_params(dataset, class_column, k, stratify, C=FALSE, M=FALSE, U=TRUE, N=FALSE, FALSE)
+  if (verbose) {
+    cat("Checking C4.5 params - U = TRUE\n")
+    cat("   measures:", meas, "\n")
+  }
+  
+  return(meas)
+}
+```
+
+```{r}
+U_param <- C45_U_param(glass, glass_class_col, 3, TRUE, FALSE)
+U_param
+```
+
+
+```{r}
+write.csv(t(U_param), 'results_tU_glass.csv')
+```
+
+
+TEST every parameter for every k value 
+```{r}
+C45_test_everything <- function(dataset_name, dataset, class_column, verbose) {
+  
+  k_values <- c(2,3,5,10)
+  strat <- c(TRUE, FALSE)
+  
+  best_C_M_acc <- matrix(list(), nrow=(length(k_values)*length(strat)), ncol=8)
+  best_C_M_fsc <- matrix(list(), nrow=(length(k_values)*length(strat)), ncol=8)
+  best_N_acc <- matrix(list(), nrow=(length(k_values)*length(strat)), ncol=7)
+  best_N_fsc <- matrix(list(), nrow=(length(k_values)*length(strat)), ncol=7)
+  all_U <- matrix(list(), nrow=(length(k_values)*length(strat)), ncol=6)
+  
+  i <- 0
+  for (stratify in strat) {
+    for (k in k_values) {
+      i <- i + 1
+      if (verbose) {
+        cat("Evaluating models for k =", k, "and stratify =", stratify, "\n")
+      }
+      C_M_params <- C45_all_C_M_params(dataset, class_column, k, stratify, FALSE)
+      write.csv(C_M_params, paste(dataset_name, '/CM_all_k=', k, '_stratify=', stratify, '.csv', sep=""))
+      best_C_M_acc[i,] <- c(k, stratify, C45_best_params(C_M_params, 1))
+      best_C_M_fsc[i,] <- c(k, stratify, C45_best_params(C_M_params, 4))
+      
+      N_params <- C45_all_N_params(dataset, class_column, k, stratify, FALSE)
+      write.csv(N_params, paste(dataset_name, '/N_all_k=', k, '_stratify=', stratify, '.csv', sep=""))
+      best_N_acc[i,] <- c(k, stratify, C45_best_params(N_params, 1))
+      best_N_fsc[i,] <- c(k, stratify, C45_best_params(N_params, 4))
+      
+      all_U[i,] <- c(k, stratify, C45_U_param(dataset, class_column, k, stratify, FALSE))
+    }
+  }
+  
+  colnames(best_C_M_acc) <- c("k", "stratify", "C", "M", "accuracy", "precision", "recall", "fscore")
+  colnames(best_C_M_fsc) <- c("k", "stratify", "C", "M", "accuracy", "precision", "recall", "fscore")
+  write.csv(best_C_M_acc, paste(dataset_name, '/CM_best_accuracy.csv', sep=""))
+  write.csv(best_C_M_fsc, paste(dataset_name, '/CM_best_fscore.csv', sep=""))
+  
+  colnames(best_N_acc) <- c("k", "stratify", "N", "accuracy", "precision", "recall", "fscore")
+  colnames(best_N_fsc) <- c("k", "stratify", "N", "accuracy", "precision", "recall", "fscore")
+  write.csv(best_N_acc, paste(dataset_name, '/N_best_accuracy.csv', sep=""))
+  write.csv(best_N_fsc, paste(dataset_name, '/N_best_fscore.csv', sep=""))
+        
+  colnames(all_U) <- c("k", "stratify", "accuracy", "precision", "recall", "fscore")
+  write.csv(all_U, paste(dataset_name, '/U_all.csv', sep=""))
+  
+}
+```
+
+```{r}
+C45_test_everything("glass", glass, glass_class_col, TRUE)
+```
+
+
+
+
+
+
+

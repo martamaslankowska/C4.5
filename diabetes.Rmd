@@ -1,0 +1,64 @@
+*Ctrl+Shift+Enter* - run code
+*Ctrl+Alt+I* - insert new chunk
+*install.packages("PackageName")* - install library
+
+
+```{r}
+# load the packages
+library(RWeka)
+library(caTools)
+library(dplyr)
+library("Rgraphviz")
+library(partykit)
+library(caret)
+library(ROCR)
+library(rBayesianOptimization)
+library(arulesViz)
+library(reshape2)
+
+```
+
+Load diabetes dataset
+```{r}
+
+diabetes <- read.csv(file="datasets/diabetes.csv", head=FALSE, sep=",", fileEncoding="UTF-8-BOM")
+
+diabetes_class_col <- 9
+colnames(diabetes)[diabetes_class_col] <- "class"
+# unique(diabetes$class)
+
+# PREPROCESSING
+diabetes$class <- factor(diabetes$class,levels = c(0, 1),labels = c("Zero", "One"))
+
+head(diabetes)
+# plot(iris)  # show dataset
+```
+
+Plot one model
+```{r}
+diabetes_model <- J48(class ~ ., data = diabetes, control = Weka_control(R = TRUE, N = 5))
+plot(diabetes_model)
+
+ff <- tempfile()
+write_to_dot(diabetes_model, ff)
+plot(agread(ff))
+```
+
+
+Test data
+```{r}
+diabetes_results <- C45_check_k_C_M(diabetes, diabetes_class_col, FALSE, TRUE)
+diabetes_results
+
+```
+
+```{r results_to_csv}
+write.csv(diabetes_results, 'results_diabetes.csv')
+```
+
+
+
+
+
+
+

@@ -1,0 +1,61 @@
+*Ctrl+Shift+Enter* - run code
+*Ctrl+Alt+I* - insert new chunk
+*install.packages("PackageName")* - install library
+
+
+```{r}
+# load the packages
+library(RWeka)
+library(caTools)
+library(dplyr)
+library("Rgraphviz")
+library(partykit)
+library(caret)
+library(ROCR)
+library(rBayesianOptimization)
+library(arulesViz)
+library(reshape2)
+
+```
+
+Load glass dataset
+```{r}
+
+glass <- read.csv(file="datasets/glass.csv", head=FALSE, sep=",", fileEncoding="UTF-8-BOM")
+
+glass <- glass[,-1]
+glass_class_col <- 10
+colnames(glass)[glass_class_col] <- "class"
+# unique(glass$class)
+
+# PREPROCESSING
+glass$class <- factor(glass$class,levels = c(1, 2, 3, 5, 6, 7),labels = c("One","Two","Three", "Five", "Six", "Seven"))
+
+head(glass)
+# plot(iris)  # show dataset
+```
+
+Plot one model
+```{r}
+glass_model <- J48(class ~ ., data = glass, control = Weka_control(C = 0.15, M = 4))
+plot(glass_model)
+```
+
+
+Test data
+```{r}
+glass_results <- C45_check_k_C_M(glass, glass_class_col, FALSE, TRUE)
+glass_results
+
+```
+
+```{r results_to_csv}
+write.csv(glass_results, 'results_glass.csv')
+```
+
+
+
+
+
+
+

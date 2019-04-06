@@ -35,6 +35,11 @@ head(iris)
 Run C4.5 on whole dataset but giving certain parameters
 
 *C4.5-like Trees*
+C4.5 decision tree grows using Depth-first strategy. It allows pruning of the resulting decision trees. It can also
+deal with numeric attributes, missing values, and noisy data. In order to handle continuous attributes, it creates a
+threshold and then splits the list into those whose attribute value is above the threshold and those that are less than or equal to it. C4.5 goes back through the tree once it's been created and attempts to remove branches that do not help by replacing them with leaf nodes.
+
+
 method = 'J48'
 Type: Classification
 
@@ -42,7 +47,7 @@ Tuning parameters:
 C (Confidence Threshold)
 M (Minimum Instances Per Leaf)
 
-C - The confidence is used to compute a pessimistic upper bound on the error rate at a leaf/node. The smaller this value, the more pessimistic the estimated error is and generally the heavier the pruning. J48 does not accept values greater the 0.5. 
+C - The confidence is used to compute a pessimistic upper bound on the error rate at a leaf/node. The smaller this value, the more pessimistic the estimated error is and generally the heavier the pruning. J48 does not accept values greater the 0.5. All it means is that the estimated upper bound for the error associated with a given node in the tree is the least pessimistic. 
 ```{r}
 WOW("J48")
 model <- J48(class ~ ., data = iris, control = Weka_control(C = 0.15, M = 5))
@@ -159,12 +164,14 @@ C45_measures <- function(dataset, class_column, k, stratify, C, M, verbose) {
     predictions <- predict(model, test[,-class_column])  # make predictions without class column
     confusion_matrix <- confusionMatrix(predictions, test$class, mode = "prec_recall")
     
-    stats <- confusion_matrix$byClass
-  
-    acc <- mean(unname(stats[, 'Balanced Accuracy']))
-    prec <- mean(unname(stats[, 'Precision']))
-    rec <- mean(unname(stats[, 'Recall']))
-    fsc <- mean(unname(stats[, 'F1']))
+    stats <- as.matrix(confusion_matrix, what = "classes")
+    stats <- as.data.frame(stats)
+    stats[is.na(stats)] <- 0
+
+    acc <- mean(as.numeric(stats['Balanced Accuracy', ]))
+    prec <- mean(as.numeric(stats['Precision', ]))
+    rec <- mean(as.numeric(stats['Recall', ]))
+    fsc <- mean(as.numeric(stats['F1', ]))
     measures[i,] <- c(acc, prec, rec, fsc)
     
     if (verbose) {
@@ -181,10 +188,18 @@ C45_measures <- function(dataset, class_column, k, stratify, C, M, verbose) {
 
 ```
 
+F-score count
+```{r}
+f_score <- function(precision, recall) {
+  return(2* (precision*recall)/(precision+recall))
+}
+```
+
+
 
 Try to use model function assuming class column is names "class"
 ```{r}
-measures_for_all_folds <- C45_measures(iris, 5, k=7, stratify=FALSE, 0.15, 4, TRUE)
+measures_for_all_folds <- C45_measures(glass, 10, k=7, stratify=FALSE, 0.15, 4, TRUE)
 cat("\nResults:", measures_for_all_folds)
 
 ```
@@ -207,7 +222,7 @@ C45_best_params <- function(dataset, class_column, k, stratify, verbose) {
         cat("Checking C4.5 params - C =", c, "and M =", m, "\n")
         cat("   measures:", meas, "\n")
       }
-    
+
       if (meas[4] > best_fscore) {
         best_fscore <- meas[4]
         best_params <- c(c, m)
